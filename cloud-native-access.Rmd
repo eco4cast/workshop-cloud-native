@@ -11,11 +11,18 @@ library(arrow)
 
 All big commercial cloud providers (e.g. AWS, Google, Azure) provide object stores. Amazon's AWS S3 platform is among the most widely used, and hosts a [large registry of open datasets](https://registry.opendata.aws/), including archives of NOAA global circulation models.  A wide range of software tools have been built around the AWS S3 interface, which has led to the adoption of S3-compatible interfaces by other cloud providers (Google) and open source platforms (CEPH, MINIO). While not an official community standard like POSIX, this makes S3 something of a de-facto standard.
 
-EFI uses the Jetstream2 Object Store, maintained by NSF XSEDE program. Unlike commercial providers, Jetstream2 uses an open source system called [CEPH](https://docs.ceph.com/en/quincy/) (developed by RedHat), which supports the S3 interface. 
+Here we'll explore a few popular libraries that support such 'cloud-native' data access. First, let's take a look at the [Apache Arrow](https://arrow.apache.org/) framework. Note that though these examples use R, {arrow} clients are available for most major languages, including python, C++, javascript, Go, Rust, etc. 
 
-Here we'll use the popular [Apache Arrow](https://arrow.apache.org/) framework 
+EFI uses the [Jetstream2](https://jetstream-cloud.org/) Cloud's Object Store, maintained by NSF XSEDE program. Unlike commercial providers, Jetstream2 uses an open source system called [CEPH](https://docs.ceph.com/en/quincy/) (developed by RedHat), which supports the S3 interface.
+Consequently, we have to override the default "endpoint" (which assumes it will be talking to AWS), to tell it to talk to our server instead.  EFI uses a simple reverse-proxy server to provide a custom endpoint to Jetstream2, `data.ecoforecast.org`.  
 
+Object stores use credentials to control who has permission to read and write data to the store.  
+
+To access data on 
+(Note the bucket names are global to the server)
 
 ```{r}
-s3 <- s3_bucket("forecasts", endpoint_override = "https://")
+s3 <- s3_bucket("forecasts", endpoint_override = "data.ecoforecast.org")
 ```
+
+
