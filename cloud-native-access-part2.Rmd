@@ -10,8 +10,70 @@ date: '2022-05-010'
 In part I, we looked at how we could access parts of tabular data files using a cloud-native protocol.
 See README.md for an overview of the motivation behind these approaches.
 
+
+
+Here's a dummy example using Sentinel geotifs and computing NDVI. 
+We could replace with a more "EFI" example using NOAA GEFS forecasts instead.  
+
 ```{r setup, message=FALSE}
 library(tidyverse)
+library(rstac)
 library(terra)
+library(sf)
 ```
 
+
+```{r}
+san_fran <- st_read("https://dsl.richmond.edu/panorama/redlining/static/downloads/geojson/CASanFrancisco1937.geojson")
+bbox = st_bbox(san_fran)
+```
+
+
+```{r}
+## Search for data from a given collection in a given bounding box:
+s_obj <- stac("https://planetarycomputer.microsoft.com/api/stac/v1/")
+
+it_obj <- s_obj |> 
+  stac_search(collections = "sentinel-2-l2a",
+              bbox = bbox,
+              datetime = "2019-06-01/2019-08-01"
+              ) |>
+  get_request() |> # intersects needs post
+  items_sign(sign_fn = sign_planetary_computer())
+
+properties <- map(it_obj$features, "properties")
+
+## filter using metadata to find image in search match with fewest clouds
+cloud_cover <- map_dbl(properties, "eo:cloud_cover")
+best <- which.min(cloud_cover)
+best_img <- it_obj$features[[best]]
+
+## peek at the data in visual spectrum
+data <- terra::rast(paste0("/vsicurl/", best_img$assets$visual$href)) ## lazy-read ~ 100 MB file over the network, no disk storage
+plot(data)
+```
+
+
+We can do subsets and computation over the network too. Here we calculate NDVI using a subset of bands.  
+
+```{r}
+## ugh, bbox must be re-projected into correct units for Sentinel
+bb <- bbox %>% st_as_sfc() %>%
+  st_transform(crs = st_crs(crs(data))) %>%
+  st_bbox() 
+terra_bbox <- ext(bb$xmin, bb$xmax, bb$ymin, bb$ymax)
+
+
+## access red and infra-red bands to compute NDVI
+red <- terra::rast(paste0("/vsicurl/", best_img$assets$B04$href)) |> crop(terra_bbox) ## lazy-read ~ 100 MB file over the network, no disk storage
+nir <- terra::rast(paste0("/vsicurl/", best_img$assets$B08$href)) |> crop(terra_bbox) ## lazy-read ~ 100 MB file over the network, no disk storage
+
+## see https://rspatial.org/terra/rs/3-basicmath.html
+vi2 <- function(x, y) {
+  (x - y) / (x + y)
+}
+ndvi <- lapp(c(nir, red), fun = vi2)
+
+# and here we are!
+ndvi  |> plot()
+```
