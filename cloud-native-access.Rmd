@@ -4,9 +4,22 @@ output: github_document
 date: '2022-05-05'
 ---
 
-```{r setup}
+
+
+# Synopsis
+
+In this tutorial we see how to use the cloud native filesystem functions `s3_bucket()` + `open_dataset()` from the `arrow` library to extract subsets and summaries of remote data files. 
+If you have used `dplyr` to access remote [relational database connections](https://db.rstudio.com), arrow's `open_dataset()` works a lot like that. 
+While the strategy is much the same, `arrow` works directly against 'static' files, there's no need for a database server.
+See the README.md for a conceptual introduction.
+
+
+```{r setup, message=FALSE}
 library(tidyverse)
+library(lubridate)
 library(arrow)
+
+Sys.setenv(CURLOPT_ACCEPTTIMEOUT_MS=10000) # Jetstream can be laggy under load
 ```
 
 All big commercial cloud providers (e.g. AWS, Google, Azure) provide object stores. Amazon's AWS S3 platform is among the most widely used, and hosts a [large registry of open datasets](https://registry.opendata.aws/), including archives of NOAA global circulation models.  A wide range of software tools have been built around the AWS S3 interface, which has led to the adoption of S3-compatible interfaces by other cloud providers (Google) and open source platforms (CEPH, MINIO). While not an official community standard like POSIX, this makes S3 something of a de-facto standard.
@@ -34,7 +47,7 @@ Here we make a connection to the the `scores` bucket. Note the endpoint override
 
 
 ```{r}
-s3 <- s3_bucket("scores", endpoint_override = "https://data.ecoforecast.org", anonymous=TRUE)
+s3 <- s3_bucket("scores", endpoint_override = "data.ecoforecast.org", anonymous=TRUE)
 ```
 
 This `s3` connection object has methods that let us interact with the data over this connection.  For instance, we can list contents in this directory (see `?arrow::S3FileSystem` or [online vignette](https://arrow.apache.org/docs/r/articles/fs.html) for details.)
@@ -68,12 +81,19 @@ ds <- open_dataset(path, partitioning = c("target_id", "year"))
 
 Note that opening the dataset requires a `path()` to the remote object, which we get with the `$path()` method, not the `$ls()` method (the latter merely returns text strings that don't contain the actual connection details.) 
 
-**Pro tip***: We could in fact have short-cut this by including the path in our original call to `s3_bucket()`, which is happy to point at any subdirectory of the bucket as well: 
+**Pro tip***: We could in fact have short-cut this by including the path in our original call to `s3_bucket()`, which is happy to point at any sub-directory of the bucket as well: 
 
 ```{r}
-s3 <- s3_bucket("scores/parquet", endpoint_override = "https://data.ecoforecast.org")
+s3 <- s3_bucket("scores/parquet", endpoint_override = "data.ecoforecast.org")
 ds <- open_dataset(s3, partitioning = c("target_id", "year"))
 ```
+
+Or if we don't need stuff like `$ls()` to list bucket contents, we can use the URI-notation for a one-line access:
+
+```{r}
+ds <- open_dataset("s3://scores/parquet?endpoint_override=data.ecoforecast.org", partitioning = c("target_id", "year"))
+```
+
 
 The resulting `ds` object is a remote connection to a data.frame-like object. 
 A concept here is that this is a _lazy_ connection - it hasn't read in any data into R yet.
@@ -97,7 +117,7 @@ pheno <-
   ds |> 
   filter(target_id == "phenology", 
          year == 2022,
-         start_time > lubridate::as_datetime("2022-04-01")) |>
+         start_time > as_datetime("2022-04-01")) |>
   collect()
 
 pheno
@@ -107,9 +127,43 @@ Note that some more complex filters, such as those which use regex patterns (see
 Arrow is also stricter about some conventions -- e.g. experienced users might note we had to explicitly convert our date string to a datetime object in order to use a logical `>` comparison; while dplyr does this automatically with in-memory data.frames.
 After our filter, we use the function `collect()` to signal we are ready to read our data into R.
 This lets `arrow` know it can be lazy no longer, so expect this step to be slow try and defer this operation as long as possible.
-In addition to `select()` and `filter()`, arrow is now capable of executing a wide range of group_by() and summarize() operations. 
 
 
+In addition to `select()` and `filter()`, arrow is now capable of executing a wide range of `group_by()` and `summarize()` operations. 
+Here's an example of some summary statistics we can compute directly from the data source.
+Some of these can be slow to compute depending on your network speed, but all can run without ever downloading the full dataset or ever reading it all into memory. 
+
+
+```{r}
+ds |> distinct(variable) |> collect() |> nrow()
+ds |> count(variable, model_id, sort=TRUE) |> collect()
+ds |> count(target_id, model_id, start_time) |> collect()
+ds |> group_by(variable, model_id) |>  summarise(mean_crps = mean(crps)) |> collect()
+ds |> summarise(duration = max(time) - min(time)) |> pull(duration) |> as.numeric(units="days")
+```
+
+## Alternative data formats
+
+In this example, the individual files in this data set are in the parquet format, but `open_dataset()` may also be used with tabular data in plain-text formats such as `csv`.
+`open_dataset()` can access a single file or many `csv`'s, including those partitioned into sub-directories like the parquet files shown here. 
+When reading in csv files, care must be taken to ensure that data types for each column are completely consistent by specifying the schema explicitly.
+While `arrow` can attempt to guess if a value is an integer, date, time, or string (etc), these guesses can fail (particularly with missing data or complex types, like difftimes). 
+With parquet, this type information is encoded into the data, and the data is also compressed by default.
+Parquet is now a widely used open standard for tabular data and may be considered a suitable alternative to `csv` or `hdf5` for serializing tabular data. 
+
+
+<!-- 
+For instance, we can read in a subsection of EFI's target data, which publishes the full date range as a single csv file (unfortunately handling compression is somewhat cumbersome at the moment):
+
+```{r}
+target <- s3_bucket("targets/aquatics",
+                    endpoint_override="data.ecoforecast.org", anonymous=TRUE)
+input <- CompressedInputStream$create(target$OpenInputFile("aquatics-targets.csv.gz"))
+
+trgt <- arrow::read_csv_arrow(input) 
+```
+
+-->
 
 ## Troubleshooting S3 Connections
 

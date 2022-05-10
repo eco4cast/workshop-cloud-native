@@ -1,0 +1,17 @@
+---
+title: "cloud native access part 2: spatially explicit data"
+output: github_document
+date: '2022-05-010'
+---
+
+
+# Synopsis
+
+In part I, we looked at how we could access parts of tabular data files using a cloud-native protocol.
+See README.md for an overview of the motivation behind these approaches.
+
+```{r setup, message=FALSE}
+library(tidyverse)
+library(terra)
+```
+
