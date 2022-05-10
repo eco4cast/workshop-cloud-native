@@ -24,6 +24,7 @@ library(sf)
 
 
 ```{r}
+## could replace with a VSIZIP / VSICURL example 
 san_fran <- st_read("https://dsl.richmond.edu/panorama/redlining/static/downloads/geojson/CASanFrancisco1937.geojson")
 bbox = st_bbox(san_fran)
 ```
@@ -48,8 +49,14 @@ cloud_cover <- map_dbl(properties, "eo:cloud_cover")
 best <- which.min(cloud_cover)
 best_img <- it_obj$features[[best]]
 
-## peek at the data in visual spectrum
-data <- terra::rast(paste0("/vsicurl/", best_img$assets$visual$href)) ## lazy-read ~ 100 MB file over the network, no disk storage
+download_url <- best_img$assets$visual$href
+
+```
+
+Now time for some virtual filesystem magic!  Instead of downloading the raster, we put the magic prefix `/vsicurl/` _in front_ of the URL, and pass that directly to `rast()`!
+
+```{r}
+data <- terra::rast(paste0("/vsicurl/", download_url)) ## lazy-read ~ 100 MB file over the network, no disk storage
 plot(data)
 ```
 
