@@ -5,6 +5,8 @@ date: '2022-05-05'
 ---
 
 
+<--! some of the intro discussion of how this works might benefit from a couple
+slides/images of your computer/local & cloud w/ notes on where stuff happens -->
 
 # Synopsis
 
@@ -17,9 +19,15 @@ See the README.md for a conceptual introduction.
 ```{r setup, message=FALSE}
 library(tidyverse)
 library(lubridate)
-library(arrow)
+library(arrow) # see https://arrow.apache.org/ for more <- I know it's lower down but this would be good to add for folks reading the code off your screen
 
 Sys.setenv(CURLOPT_ACCEPTTIMEOUT_MS=10000) # Jetstream can be laggy under load
+```
+
+
+```{r eg}
+# might put an example directory tree with a fake csv file so it feels more real
+# when you demonstrate navigating with the Rstudio popup tabs
 ```
 
 All big commercial cloud providers (e.g. AWS, Google, Azure) provide object stores. Amazon's AWS S3 platform is among the most widely used, and hosts a [large registry of open datasets](https://registry.opendata.aws/), including archives of NOAA global circulation models.  A wide range of software tools have been built around the AWS S3 interface, which has led to the adoption of S3-compatible interfaces by other cloud providers (Google) and open source platforms (CEPH, MINIO). While not an official community standard like POSIX, this makes S3 something of a de-facto standard.
@@ -60,7 +68,10 @@ s3$ls()
 Here we see only one directory (folder). Let's look inside that:
 
 ```{r}
-s3$ls("parquet")
+s3$ls("parquet") # you might want to introduce what parquet is, but more
+# briefly - a modern version of csv that says what types the columns are and
+# is broken into chunks ('shards') to allow smarter subsetting
+# showing them the structure will help even more
 
 s3$ls(recursive=TRUE) |> head() # get all sub-folders but show only first few
 
@@ -76,6 +87,9 @@ We can tell `arrow` about this "partitioning", allowing fast data filtering that
 
 ```{r}
 path <- s3$path("parquet")
+# some of the details about what a subtree filesystem is and how it could be on
+# your computer seemed a little too detailed and potentially confusing
+# maybe just say 'path' is a pointer/handle to what you want
 ds <- open_dataset(path, partitioning = c("target_id", "year"))
 ```
 
@@ -84,7 +98,7 @@ Note that opening the dataset requires a `path()` to the remote object, which we
 **Pro tip***: We could in fact have short-cut this by including the path in our original call to `s3_bucket()`, which is happy to point at any sub-directory of the bucket as well: 
 
 ```{r}
-s3 <- s3_bucket("scores/parquet", endpoint_override = "data.ecoforecast.org")
+s3 <- s3_bucket("scores/parquet", endpoint_override = "data.ecoforecast.org", anonymous=TRUE)
 ds <- open_dataset(s3, partitioning = c("target_id", "year"))
 ```
 
